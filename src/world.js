@@ -54,6 +54,7 @@ export const SOLIDS=[
   disc('Cây Đông Nam 2 · gốc',1337,812,21),
   disc('Cây Tây Nam 1 · gốc',114,824,20),
   disc('Cây Tây Nam 2 · gốc',190,837,22),
+  disc('Người lái đò tại thành trì',1370,660,16),
 ];
 
 export const PORTALS=[
@@ -71,6 +72,7 @@ export const CITY_EXITS=[
 ];
 
 export const CITY_INTERACTIONS=[
+  {id:'ferryman',label:'⚓ Người lái đò · Về bến thuyền',x:1370,y:660,reach:88},
   {id:'pet-shop',label:'NPC bán Pet · Nhận miễn phí / Mua Pet',x:1033,y:321,reach:82},
   {id:'magic',label:'Nhà MAGIC · Học kỹ năng',x:1182,y:837,reach:83},
   {id:'quests',label:'Bảng nhiệm vụ ngày',x:1137,y:290,reach:78},
@@ -128,7 +130,7 @@ export const OUTSKIRTS={
     spawn:{x:768,y:120},
     exits:[
       {id:'north',x:688,y:0,w:160,h:92,to:'out-west',label:'Trở lại làng phía Tây',arrow:'north',returnAt:{x:771,y:914}},
-      {id:'east',x:1488,y:565,w:48,h:106,to:'out-east',label:'Lối sang map bên phải',arrow:'east',returnAt:{x:126,y:318}},
+      {id:'east',x:1488,y:565,w:48,h:106,to:'out-harbor',label:'Sang bến thuyền',arrow:'east',returnAt:{x:128,y:548}},
       // Doorway in the stone arch. Reach it by walking NORTH along the visible dirt path.
       {id:'mine',x:442,y:335,w:71,h:69,to:'mine-tunnel',label:'Đi vào hầm mỏ',showArrow:false,returnAt:{x:471,y:417}},
     ],
@@ -144,8 +146,42 @@ export const OUTSKIRTS={
       box('Rừng mép dưới',0,912,1536,112),box('Rừng mép trái dưới',0,795,250,229),box('Rừng mép phải dưới',1272,811,264,213),
       disc('Gốc cây giữa 1',782,494,23),disc('Gốc cây giữa 2',896,517,23),disc('Gốc cây giữa 3',671,516,23)
     ]
+  },
+  'out-harbor':{
+    id:'out-harbor',label:'Bến thuyền Mỏ Neo',image:'out_harbor',width:1536,height:1024,
+    spawn:{x:128,y:548},
+    exits:[{id:'west',x:12,y:506,w:56,h:80,to:'out-west-south',label:'Về khu phía Nam của làng',arrow:'west',returnAt:{x:1432,y:618}}],
+    npc:[{id:'ferryman',label:'⚓ Người lái đò · Đi thành trì Pet Town',x:1135,y:289,reach:100}],
+    solids:[
+      box('Biên rừng Bắc',0,0,1065,48),
+      box('Móng nhà Tây',147,246,294,28),box('Móng nhà Đông',703,232,279,30),
+      box('Rừng mép Tây phía trên',0,0,165,496),box('Rừng mép Tây phía dưới',0,592,170,432),
+      box('Sông phía Đông',1240,0,296,1024),box('Sông phía trên bến',1102,0,138,194),
+      box('Nước bên cạnh người lái đò',1178,194,62,63),box('Sông dưới cầu tàu',1163,443,77,581),
+      box('Bờ kè phía dưới',1128,444,32,580),
+      box('Bệ tượng linh thú',865,481,180,151),
+      box('Bồn hoa trên',887,694,162,59),box('Bồn hoa dưới',891,838,163,55),
+      disc('Cây Tây Bắc 1',462,430,23),disc('Cây Tây Bắc 2',537,451,23),disc('Cây Tây Bắc 3',608,473,23),
+      disc('Cây Tây giữa 1',437,597,22),disc('Cây Tây giữa 2',517,607,23),disc('Cây Tây giữa 3',581,620,22),
+      disc('Cây cạnh tượng 1',885,445,22),disc('Cây cạnh tượng 2',951,454,22),disc('Cây cạnh tượng 3',1025,459,22),
+      disc('Cây phía Nam',560,854,25),disc('Người lái đò',1135,282,17),
+      disc('Đèn bến trên',1212,277,15),disc('Đèn bến dưới',1217,415,15),
+    ],
+    foreground:[
+      fg('Nhà bến Tây',274,rectPoly(143,54,443,274)),fg('Nhà bến Đông',262,rectPoly(701,34,989,262)),
+      fg('Cụm cây Tây Bắc',473,[[382,280],[500,239],[561,248],[638,387],[636,473],[382,473]]),
+      fg('Cụm cây giữa',620,rectPoly(377,476,616,620)),
+      fg('Cụm cây cạnh tượng',461,rectPoly(839,335,1086,461)),
+      fg('Cây phía Nam',854,rectPoly(494,698,625,854)),
+    ]
   }
 };
+
+// Explicit destinations keep ferry travel validated by both the UI and server.
+export const FERRY_ROUTES=Object.freeze({
+  'out-harbor':[{to:'city',label:'Thành trì Pet Town',spawn:{x:1370,y:708}}],
+  city:[{to:'out-harbor',label:'Bến thuyền Mỏ Neo',spawn:{x:1130,y:344}}],
+});
 
 export const FOREGROUND=[
   fg('Shop mái cam',291,[[207,104],[460,103],[463,210],[508,224],[509,293],[207,293]]),
@@ -268,16 +304,21 @@ export function getMapConfig(scene='city'){
     title:'Bản đồ khu phía Nam của làng',image:'assets/out-west-south.png',width:sceneData.width,height:sceneData.height,
     markers:[
       {id:'north',label:'Trở lại làng phía Tây',x:768,y:22,axis:'h'},
-      {id:'east',label:'Lối sang map bên phải',x:1511,y:618,axis:'v'},
+      {id:'east',label:'Sang bến thuyền Mỏ Neo',x:1511,y:618,axis:'v'},
       {id:'mine',label:'Lối vào hầm mỏ',x:477,y:372,axis:'h'},
     ],
     hotspots:[
       {id:'north',label:'Trở lại làng phía Tây',x:670,y:0,w:200,h:108},
-      {id:'east',label:'Lối sang map bên phải',x:1456,y:551,w:80,h:132},
+      {id:'east',label:'Sang bến thuyền Mỏ Neo',x:1456,y:551,w:80,h:132},
       {id:'cave',label:'Hầm mỏ',x:292,y:177,w:354,h:346},
       {id:'graveyard',label:'Khu bia đá',x:1028,y:168,w:368,h:368},
       {id:'forest',label:'Rừng nhỏ',x:0,y:840,w:1536,h:184},
     ]
+  };
+  if(scene==='out-harbor')return {
+    title:sceneData.label,image:'assets/out-harbor.png',width:sceneData.width,height:sceneData.height,
+    markers:[{id:'west',label:'Về khu phía Nam của làng',x:36,y:546,axis:'v'},{id:'ferryman',label:'⚓ Đi thành trì Pet Town',x:1135,y:289,axis:'h'}],
+    hotspots:[{id:'ferryman',label:'Người lái đò · Đi nhanh sang thị trấn khác',x:1087,y:195,w:91,h:154},{id:'boats',label:'Bến đò',x:1178,y:430,w:290,h:370}],
   };
   return {title:sceneData.label,image:'assets/map.png',width:sceneData.width,height:sceneData.height,markers:[],hotspots:[]};
 }

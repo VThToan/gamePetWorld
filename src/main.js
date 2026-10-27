@@ -27,7 +27,7 @@ function setStatus(text){status.textContent=text;}
 function screenToWorld(clientX,clientY){const b=canvas.getBoundingClientRect();const px=(clientX-b.left)*canvas.width/b.width,py=(clientY-b.top)*canvas.height/b.height;return {x:px/settings.zoom+renderer.camera.x,y:py/settings.zoom+renderer.camera.y};}
 function clearPointerTarget(){if(!game?.pointer)return;game.pointer.active=false;game.pointer.dragMoved=false;game.pointer.target=null;}
 function interactionMeta(target){
-  const route={quests:'quests',magic:'magic',elder:'elder',items:'items',storage:'storage',evolution:'evolution','pet-shop':'pet-shop'};
+  const route={quests:'quests',magic:'magic',elder:'elder',items:'items',storage:'storage',evolution:'evolution','pet-shop':'pet-shop',ferryman:'ferry'};
   const prompts={
     quests:'Mở bảng nhiệm vụ để xem việc cần làm hôm nay?',magic:'Bạn muốn vào nhà MAGIC để học kỹ năng cho pet?',elder:'Bạn muốn nói chuyện với Bà chủ nhà?',
     items:'Bạn muốn giao tiếp với NPC vật phẩm / Poke Ball?',storage:'Bạn muốn giao tiếp với NPC lưu trữ / hồi phục pet?',evolution:'Bạn muốn giao tiếp với NPC nguyên liệu tiến hóa?',
@@ -150,9 +150,10 @@ function updateDoorPrompt(){
   if(interactable&&interactButton)interactButton.hidden=false;
 }
 function interact(targetOverride=null){
-  if(!game||game.paused||game.battle.active||ui?.isOpen())return;
+  if(!game||game.paused||game.battle.active||game.net?.duel||game.net?.wildFight||ui?.isOpen())return;
   const {x,y}=game.player;const target=targetOverride||nearestInteraction(game.scene,x,y);if(!target)return;
   const meta=interactionMeta(target);
+  if(target.id==='ferryman'){clearPointerTarget();ui.open('ferry');return;}
   if(window.confirm(`${meta.prompt}\n\nChọn OK để đồng ý, hoặc Cancel để rời đi.`)){clearPointerTarget();if(meta.route)ui.open(meta.route);else setStatus(`Đã giao tiếp với ${target.label}`);}
 }
 function syncBattleUI(){
@@ -210,7 +211,10 @@ function bindPointerControls(){
 }
 
 function setupNetwork(){
- const net=new NetClient(msg=>{if(msg.type==='connection'){$('#net-status').textContent=msg.online?'🟢 Multiplayer: đã kết nối máy chủ':'🔴 Ngoại tuyến · chạy npm run dev để chơi 2 client';}if(msg.type==='notice')setStatus(msg.message);if(msg.type==='challenge'){const yes=window.confirm(`${msg.name} muốn thách đấu pet với bạn. Đồng ý?`);net.respond(msg.from,yes);}if(msg.type==='duel'){ui?.close();game.battle.stop();keys.clear();$('#menu-trigger').disabled=true;syncBattleUI();syncSkillButtons();}if(msg.type==='duelEnd'){$('#menu-trigger').disabled=false;syncBattleUI();setStatus(msg.message);if(msg.winner===net.id){gainPetXP(progress,40);saveProgress(progress);}}
+ const net=new NetClient(msg=>{if(msg.type==='connection'){$('#net-status').textContent=msg.online?'🟢 Multiplayer: đã kết nối máy chủ':'🟠 Mất kết nối · đang tự kết nối lại…';if(!msg.online){$('#peer-card').hidden=true;$('#menu-trigger').disabled=game.battle.active;syncBattleUI();}}
+ if(msg.type==='snapshot')$('#net-status').textContent=`🟢 Multiplayer · ${net.online}/${net.maxClients} người online`;
+ if(msg.type==='travel'){ui?.close();game.paused=false;$('#pause').textContent='⏸ Tạm dừng';changeScene(msg.scene,'ferry',msg.spawn);setStatus(msg.message);}
+ if(msg.type==='notice')setStatus(msg.message);if(msg.type==='challenge'){const yes=window.confirm(`${msg.name} muốn thách đấu pet với bạn. Đồng ý?`);net.respond(msg.from,yes);}if(msg.type==='duel'){ui?.close();game.battle.stop();keys.clear();$('#menu-trigger').disabled=true;syncBattleUI();syncSkillButtons();}if(msg.type==='duelEnd'){$('#menu-trigger').disabled=false;syncBattleUI();setStatus(msg.message);if(msg.winner===net.id){gainPetXP(progress,40);saveProgress(progress);}}
  if(msg.type==='wildBattleStart'){ui?.close();clearPointerTarget();$('#menu-trigger').disabled=true;syncBattleUI();}
  if(msg.type==='wildBattleEnd')handleSharedBattleResult(msg);
  if(msg.type==='wildItemUsed'){if(progress.items[msg.item]>0){progress.items[msg.item]--;saveProgress(progress);}syncSkillButtons();}});game.net=net;
@@ -224,7 +228,12 @@ async function start(){
     renderer=new Renderer(canvas,assets,settings);canvas.style.imageRendering=settings.pixelated?'pixelated':'auto';
     game={playerName:'HLV '+Math.floor(Math.random()*900+100),player:makeActor(SPAWN.x,SPAWN.y,'south'),pet:makeActor(SPAWN.x-64,SPAWN.y+6,'west'),history:[],lastHistory:{},battle:new Battle(),paused:false,dt:0,scene:'city',exitCooldown:0,battleResolution:'',pointer:{active:false,dragMoved:false,target:null,startX:0,startY:0},wildEncounterCooldown:0,restMode:false,lastMotionAt:Date.now()};
     resetGame();bindKeyboard();bindSettings();bindTouch();bindPointerControls();
-    ui=createGameUI(progress,()=>{syncSettingsUI();keys.clear();$('#settings-dialog').showModal();},()=>game?.scene||'city');
+    ui=createGameUI(progress,()=>{syncSettingsUI();keys.clear();$('#settings-dialog').showModal();},()=>game?.scene||'city',destination=>{
+      if(!game.net?.connected||game.battle.active||game.net.duel||game.net.wildFight)return false;
+      // Flush the latest location before the server checks interaction distance.
+      game.net.lastMove=-Infinity;game.net.update(game.player,game.pet,game.scene,activePet(progress)?.species||'flame',activePet(progress)?.level||1,game.playerName,networkExtra());
+      game.net.ferry(destination);return true;
+    });
     setupNetwork();window.__PetTownDebug={getGame:()=>game,getProgress:()=>progress,moveTo:(scene,x,y)=>{if(scene!==game.scene)changeScene(scene);game.player.x=x;game.player.y=y;renderer.updateCamera(game.player,0,true,game.scene);},getSharedWilds:()=>game.net?.wilds||[]};
     $('#battle-toggle').addEventListener('click',toggleBattle);$('#leave-battle').addEventListener('click',()=>game.net?.duel?game.net.surrender():toggleBattle());$('#reset').addEventListener('click',resetGame);$('#pause').addEventListener('click',togglePause);
     document.querySelectorAll('[data-skill]').forEach(button=>button.addEventListener('click',()=>{const skill=SKILL_LEVELS.find(x=>x.id===button.dataset.skill);const pet=activePet(progress);if(!skill||!pet?.skills?.includes(skill.id)||pet.level<skill.level)return;if(game.net?.duel){game.net.attack(skill.id);return;}if(game.net?.wildFight){game.net.wildAction('skill',skill.id);return;}if(game.battle.active&&game.battle.useSkill(skill.id))syncSkillButtons();}));

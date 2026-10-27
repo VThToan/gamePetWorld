@@ -2,10 +2,15 @@
   "name": "pettown-v1-7-shared-wild-world",
   "version": "1.7.0",
   "private": true,
+  "engines": {"node": ">=22"},
   "type": "module",
-  "description": "Server synchronized wild pet populations and battles for 2 clients, 9-element VFX, rage buff and recovery",
+  "description": "Shared LAN multiplayer world, concurrent battles and harbor ferry travel",
   "scripts": {
+    "start": "node dev-server.mjs",
     "dev": "node dev-server.mjs",
-    "test": "node tests/progression.mjs && node tests/smoke.mjs && node tests/scenes.mjs && node tests/navigation.mjs && node tests/features.mjs && node tests/shared-world.mjs && node tests/shared-sockets.mjs && node tests/effects.mjs"
+    "test": "node tests/progression.mjs && node tests/smoke.mjs && node tests/scenes.mjs && node tests/navigation.mjs && node tests/features.mjs && node tests/shared-world.mjs && node tests/shared-sockets.mjs && node tests/effects.mjs && node tests/multiplayer.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
   }
 }

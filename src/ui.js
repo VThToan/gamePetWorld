@@ -2,7 +2,7 @@ import { CATALOG,BAG_CAPACITY,activePet,buy,usePotion,healTeam,storePet,withdraw
 import { SKILLS } from './config.js';
 import { PET_SPECIES,SKILL_LEVELS,getFreePetMode,PET_TEST_FLAG_STORAGE_KEY,speciesById,skillCompatible } from './pet-data.js';
 import { adoptPet,choosePet,gainPetXP,learnPetSkill,upgradeSkillRank,petStats } from './gameplay.js';
-import { getMapConfig } from './world.js';
+import { getMapConfig,FERRY_ROUTES } from './world.js';
 const $=(selector)=>document.querySelector(selector);
 const escapeHTML=(text)=>String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -21,7 +21,7 @@ function renderMenuMap(scene){
  `<p class="small-copy">Dấu "-" chỉ hiện trong phần bản đồ của menu, không hiện trên giao diện chơi chính. Các cổng đỏ trên màn chơi đã được dời sát cuối mép map theo yêu cầu.</p>`;
 }
 
-export function createGameUI(progress,openSettings,getScene=()=> 'city'){
+export function createGameUI(progress,openSettings,getScene=()=> 'city',takeFerry=()=>false){
  const backdrop=$('#menu-shade'),menu=$('#quick-menu'),panel=$('#game-panel'),content=$('#game-panel-content');
  let current=null,showMenu=false,message='',selectedPetId=progress.activePet;
  const persist=()=>saveProgress(progress);
@@ -34,6 +34,11 @@ export function createGameUI(progress,openSettings,getScene=()=> 'city'){
  function render(){
   let html='';const pet=activePet(progress);const wallet=`<span class="wallet">🪙 ${progress.coins} xu</span>`;
   switch(current){
+   case 'ferry':{
+    const routes=FERRY_ROUTES[getScene()]||[];
+    html=heading('⚓ Người lái đò','Chọn nơi cập bến · chuyến đi miễn phí')+
+      `<div class="module-card"><p>Chào mừng lên thuyền! Ta sẽ đưa bạn và pet sang thị trấn bên kia.</p>${routes.map(route=>`<button data-action="ferry" data-id="${escapeHTML(route.to)}">⛵ Đi ${escapeHTML(route.label)}</button>`).join('')}<p class="small-copy">Bạn có thể gặp người lái đò ở bến đến để quay lại.</p></div>`;
+    }break;
    case 'pets':{
     const currentPet=[...progress.pets,...progress.storage].find(p=>p.id===selectedPetId)||pet;
     const species=speciesById(currentPet?.species),stats=petStats(currentPet);
@@ -92,6 +97,9 @@ export function createGameUI(progress,openSettings,getScene=()=> 'city'){
  function apply(action,id){
   let result={ok:false,message:'Chưa hỗ trợ thao tác này.'};
   switch(action){
+   case 'ferry':
+    if(takeFerry(id)){close();return;}
+    result={ok:false,message:'Mất kết nối máy chủ. Hãy chờ kết nối lại rồi thử đi thuyền.'};break;
    case 'buy':result=buy(progress,id);break;
    case 'use-potion':result=usePotion(progress);break;
    case 'heal':result=healTeam(progress);break;

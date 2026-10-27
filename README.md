@@ -1,23 +1,45 @@
-# Pet Town v1.7 — Thế giới quái đồng bộ multiplayer
+# Pet Town — Multiplayer Wi-Fi/LAN & bến thuyền Mỏ Neo
 
-## Chạy trong VS Code
+## Chơi chung trên nhiều máy qua Wi-Fi/LAN
 
-1. Cài Node.js 22 trở lên.
-2. Mở thư mục project rồi chạy `npm run dev`.
-3. Truy cập `http://localhost:5500` ở **hai tab** hoặc hai trình duyệt.
-4. Mỗi tab hiển thị cùng một quần thể quái (máy chủ tạo duy nhất).
+1. Chọn **một máy làm máy chủ**, cài Node.js 22 trở lên và mở thư mục project.
+2. Chạy `npm ci`, sau đó `npm start` (hoặc `npm run dev`).
+3. Máy chủ lắng nghe trên `0.0.0.0:5500` và in các địa chỉ LAN, ví dụ `http://192.168.1.10:5500`.
+4. Điện thoại và máy tính cùng Wi-Fi/LAN mở **cùng địa chỉ IP của máy chủ** trong trình duyệt. Không dùng `localhost` trên máy khác và không chạy một server riêng trên từng máy.
+5. Các máy nhìn thấy cùng người chơi, quái, trận đấu và thay đổi bản đồ. Thanh trạng thái hiển thị số người online và tự kết nối lại khi mạng phục hồi.
 
-Lưu ý: Live Server không chạy máy chủ đồng bộ. Muốn test quái giống nhau trên 2 client, phải dùng `npm run dev`.
+Nếu không vào được từ thiết bị khác: kiểm tra IP LAN của máy chủ, cho phép TCP cổng 5500 trong tường lửa của máy chủ và tránh mạng khách bật cách ly thiết bị. Máy chủ cần tiếp tục chạy trong lúc chơi. Live Server chỉ phục vụ file tĩnh, không có thế giới multiplayer.
+
+| Biến cấu hình | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | Lắng nghe trên các giao diện mạng IPv4 |
+| `PORT` | `5500` | Cổng HTTP và WebSocket `/ws` |
+| `MAX_CLIENTS` | `64` | Số kết nối tối đa, chấp nhận 1–256 |
+
+Ví dụ Bash: `PORT=8080 MAX_CLIENTS=32 npm start`. PowerShell: `$env:PORT=8080; $env:MAX_CLIENTS=32; npm start`.
+
+`GET /health` trả trạng thái máy chủ, số người đang kết nối và giới hạn kết nối. Mỗi cặp PvP có trận riêng; nhiều cặp PvP và nhiều trận PvE có thể diễn ra đồng thời. Thư viện `ws` xử lý WebSocket, heartbeat và ngắt kết nối; máy chủ dọn trận khi người chơi rời đi.
+
+Muốn chơi qua Internet, chạy cùng máy chủ trên host mà các thiết bị truy cập được và cấu hình reverse proxy HTTPS chuyển tiếp cả HTTP và WebSocket `/ws` (giữ header `Host` và hỗ trợ Upgrade). Client tự dùng WSS khi trang là HTTPS. Mã nguồn này chưa tự triển khai lên Internet; IP riêng của container cloud không phải IP Wi-Fi của máy tính tại nhà.
+
+## Bến thuyền và người lái đò
+
+- Từ **làng phía Tây**, đi xuống **khu phía Nam của làng**, rồi theo đường sang phải để đến **Bến thuyền Mỏ Neo** (`out-harbor`). Lối bên trái bến đưa bạn về khu nam làng.
+- Asset `assets/out-harbor.png` là bản đồ 1536×1024 vẽ lại từ ảnh tham chiếu: đồng bộ phong cách rừng/cỏ/đường đất với hai map làng, bỏ khung điện thoại, giao diện và các nhân vật khác; giữ duy nhất người lái đò đội mũ xanh có biểu tượng mỏ neo.
+- Đến gần người lái đò ở cầu tàu, nhấn **E**, nút **Giao tiếp**, hoặc nhấp để mở bảng chọn chuyến đi. Chọn **Thành trì Pet Town** để đi nhanh miễn phí. Người lái đò ở phía đông nam thành trì có tuyến quay lại bến.
+- Máy chủ kiểm tra điểm đến, khoảng cách tới NPC và trạng thái chiến đấu trước khi chuyển map; các client khác nhận vị trí mới qua snapshot chung.
+- Nước, bệ tượng, bồn hoa và chân cây có va chạm; mái nhà và tán cây che nhân vật theo độ sâu. Menu bản đồ hiển thị asset bến cùng vị trí người lái đò.
+- Bến là khu an toàn, không sinh thêm quái; năm map quái cũ giữ nguyên số lượng.
 
 ## Multiplayer và pet hoang dã
 
 - Server quản lý **12 pet mỗi bản đồ ngoài thành**: `out-west`, `out-west-south`, `out-north`, `out-south`, `out-east`.
 - Mỗi map chia **4 cột × 3 hàng** để quái trải đều, cách nhau tối thiểu 125 đơn vị trong map; quái bị hạ/bắt sẽ respawn **sau 10 giây** ở vị trí ngẫu nhiên mới trong cùng ô phân bố (nếu bản đồ chưa đủ 12 quái).
 - Client 1 vào đánh pet hoang dã: server đánh dấu pet này đang giao chiến. Client 2 sẽ thấy người chơi/pet cùng thanh HP/MP và hiệu ứng kỹ năng ngay trên bản đồ (không bị chuyển sang màn hình chiến đấu riêng).
-- Không thể hai người cùng đánh một pet hoang dã. Hệ thống PvP hai client từ bản cũ vẫn giữ lại.
+- Không thể hai người cùng đánh một pet hoang dã. Các cặp PvP có trận riêng, không chặn những người chơi còn lại.
 - **Thứ tự ra đòn** theo tốc độ (cộng cấp độ) của pet; lượt người chơi **3 giây**, nếu không chọn skill thì tự đánh thường.
 - Pet hoang dã tự chọn đòn theo cấp độ; HP/MP của trận PvE xử lý ở server, không độc lập theo từng client.
-- Khi thắng, client nhận EXP và quái biến mất ở cả hai client. Bắt pet hoang dã có tỉ lệ cao hơn khi HP thấp/bị hiệu ứng bất lợi.
+- Khi thắng, client nhận EXP và quái biến mất trên mọi client. Bắt pet hoang dã có tỉ lệ cao hơn khi HP thấp/bị hiệu ứng bất lợi.
 
 ## Kỹ năng / VFX
 
@@ -41,11 +63,13 @@ Lưu ý: Live Server không chạy máy chủ đồng bộ. Muốn test quái gi
 npm test
 ```
 
-Gồm các test cũ (bản đồ, va chạm, shop, PvP) và ba test mới (`tests/shared-world.mjs`, `tests/shared-sockets.mjs`, `tests/effects.mjs`) xác nhận world chung, phân bố, tranh chấp quái, battle observer, tự đánh và hồi phục.
+Chạy đủ 9 tệp kiểm thử: progression, smoke, scenes, navigation, features, shared-world, shared-sockets, effects, multiplayer. Các test khởi động/dừng máy chủ riêng trên cổng 58213, 58227 và 58241; cần để trống các cổng này.
+
+`tests/multiplayer.mjs` kiểm tra 8 kết nối đồng thời (có kết nối qua IP mạng nếu có), hai trận PvP và hai trận PvE cùng lúc, khóa quái, giới hạn kết nối, giải phóng slot/quái khi rời mạng, tuyến đò hai chiều và đồng bộ tới người quan sát. `tests/navigation.mjs` kiểm tra đường đi tới NPC, lối sang/về bến, điểm đặt an toàn và va chạm nước/tượng. Tám kết nối là mức đã kiểm thử chức năng, chưa phải benchmark tải 64 người.
 
 ## Giới hạn prototype
 
-- Máy chủ hiện giới hạn tối đa **hai kết nối** đồng thời; chưa có hệ thống tài khoản/DB. Reload server sẽ tạo lại vị trí quái mới.
+- Máy chủ mặc định tối đa **64 kết nối** đồng thời; chưa có hệ thống tài khoản/DB. Reload server sẽ tạo lại vị trí quái mới. Kết nối lại tạo phiên người chơi mới, không tiếp tục trận cũ.
 - Dữ liệu pet và vật phẩm của người chơi vẫn lưu cục bộ trên trình duyệt; hệ thống kiểm chứng vật phẩm/EXP chống gian lận phía server chưa hoàn thiện.
 - 13 bộ VFX là sprite **thử nghiệm** theo thuật toán, có thể thay frame PNG để nâng cao chất lượng mà không phải sửa logic.
 - Gameplay trên các scene placeholder và điều kiện cấp/giá pet hiện là dữ liệu thử nghiệm.

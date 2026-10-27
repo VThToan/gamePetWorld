@@ -30,6 +30,7 @@ export async function loadAssets(onProgress=()=>{}) {
     ['interior_mine','assets/interiors/mine.png'],
     ['out_west_village','assets/out-west-village.png'],
     ['out_west_south','assets/out-west-south.png'],
+    ['out_harbor','assets/out-harbor.png'],
   ];
   for (const dir of PLAYER_DIRECTIONS) for (let n=0;n<2;n++) files.push([`player_${dir}_${n}`,`assets/player/${dir}_${n}.png`]);
   for (const dir of PET_DIRECTIONS) files.push([`pet_${dir}`,`assets/pet/${dir}.png`]);

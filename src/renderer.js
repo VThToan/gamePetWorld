@@ -44,13 +44,14 @@ export class Renderer {
       if(img) ctx.drawImage(img,0,0,dim.width,dim.height);
       else {ctx.fillStyle=scene==='city'?'#253b4f':'#30241c';ctx.fillRect(0,0,dim.width,dim.height);}
     }
-    if(scene==='city'){this.drawCityMarkers();this.drawPetVendor();}
+    if(scene==='city'){this.drawCityMarkers();this.drawPetVendor();this.drawCityFerryman();}
     else if(!isOutdoorScene(scene))this.drawIndoorHighlights(scene);
     // Painter algorithm: roofs, trees and signs cover actors BEHIND them.
     // They never block movement merely because they are tall in the image.
     const sceneNpcLayers=(OUTSKIRTS[scene]?.rookieTrainer?[      {kind:'npc-player',y:OUTSKIRTS[scene].rookieTrainer.y,data:{x:OUTSKIRTS[scene].rookieTrainer.x,y:OUTSKIRTS[scene].rookieTrainer.y,facing:'west',moving:false,anim:0,displayName:OUTSKIRTS[scene].rookieTrainer.name}},      {kind:'npc-pet',y:OUTSKIRTS[scene].rookieTrainer.petY,data:{x:OUTSKIRTS[scene].rookieTrainer.petX,y:OUTSKIRTS[scene].rookieTrainer.petY,facing:'east',moving:false,anim:0,species:OUTSKIRTS[scene].rookieTrainer.species,displayName:OUTSKIRTS[scene].rookieTrainer.petName}}    ]:[]);
+    const foreground=scene==='city'?FOREGROUND:(OUTSKIRTS[scene]?.foreground||[]);
     const layers=[
-      ...(scene==='city'?FOREGROUND.map(item=>({kind:'foreground',y:item.contactY,data:item})):[]),
+      ...foreground.map(item=>({kind:'foreground',y:item.contactY,data:item})),
       ...sceneNpcLayers,
       {kind:'player',y:game.player.y,data:game.player},
       {kind:'pet',y:game.pet.y,data:game.pet},
@@ -61,7 +62,7 @@ export class Renderer {
       ])),
     ].sort((a,b)=>a.y-b.y);
     for(const layer of layers) {
-      if(layer.kind==='foreground') this.drawForeground(layer.data);
+      if(layer.kind==='foreground') this.drawForeground(layer.data,scene);
       else this.drawActor(layer.kind,layer.data);
       if(layer.kind==='pet'||layer.kind==='remote-pet'||layer.kind==='wild-pet'){const fight=(game.net?.wildBattles||[]).find(f=>f.monsterId===layer.data.id);this.drawWorldPetBars(layer.data,layer.kind==='pet'?game.petStats:(layer.kind==='wild-pet'?{hp:fight?.enemyHP??layer.data.hp??100,mp:fight?.enemyMP??layer.data.mp??100,level:layer.data.level||1}:null));}
       if(layer.kind==='remote-player')this.drawRemoteName(layer.data);
@@ -70,8 +71,8 @@ export class Renderer {
     }
     // A faint ghost prevents the avatar disappearing completely behind a roof.
     // Building art remains visually in front; gameplay movement is not restricted.
-    for(const actor of (scene==='city'?[{kind:'player',data:game.player},{kind:'pet',data:game.pet}]:[])) {
-      if(FOREGROUND.some(layer=>actor.data.y<layer.contactY && this.isInsidePolygon(actor.data.x,actor.data.y,layer.polygon))) {
+    for(const actor of [{kind:'player',data:game.player},{kind:'pet',data:game.pet}]) {
+      if(foreground.some(layer=>actor.data.y<layer.contactY && this.isInsidePolygon(actor.data.x,actor.data.y,layer.polygon))) {
         ctx.save();ctx.globalAlpha=.30;this.drawActor(actor.kind,actor.data);ctx.restore();
       }
     }
@@ -114,6 +115,14 @@ export class Renderer {
   }
   drawCityMarkers(){
     for(const g of CITY_EXITS)this.drawGateArrow(g.markerX,g.markerY,g.facing);
+  }
+  drawCityFerryman(){
+    const c=this.ctx,x=1370,y=660,img=this.images.player_south_0;
+    c.save();
+    if(img){c.filter='hue-rotate(180deg)';c.drawImage(img,x-25,y-72,50,72);c.filter='none';}
+    c.textAlign='center';c.font='bold 23px system-ui';c.strokeStyle='#143849';c.lineWidth=4;
+    c.strokeText('⚓',x,y-83);c.fillStyle='#9af0ff';c.fillText('⚓',x,y-83);
+    c.font='bold 12px system-ui';c.strokeText('LÁI ĐÒ · E',x,y+20);c.fillStyle='#fff0c4';c.fillText('LÁI ĐÒ · E',x,y+20);c.restore();
   }
   drawGateArrow(x,y,dir){
     const c=this.ctx,angle={north:-Math.PI/2,south:Math.PI/2,west:Math.PI,east:0}[dir];
@@ -184,7 +193,8 @@ export class Renderer {
       c.fillText('NGOẠI THÀNH — KHU VỰC TEST',480,295);c.font='14px system-ui';c.fillText('Đi về mũi tên để trở lại thành trì',480,317);c.textAlign='left';
     }
     if(scene==='out-west'){c.fillStyle='#142233dd';c.fillRect(14,14,210,48);c.fillStyle='#fff0c4';c.font='bold 17px system-ui';c.fillText('LÀNG PHÍA TÂY',24,36);c.font='12px system-ui';c.fillText('Lối phải sang thành trì · lối dưới xuống đường mòn',24,53);}
-    if(scene==='out-west-south'){c.fillStyle='#142233dd';c.fillRect(14,14,270,52);c.fillStyle='#fff0c4';c.font='bold 17px system-ui';c.fillText('KHU PHÍA NAM CỦA LÀNG',24,36);c.font='12px system-ui';c.fillText('Lối phải đi tiếp sang map bên cạnh',24,53);}
+    if(scene==='out-west-south'){c.fillStyle='#142233dd';c.fillRect(14,14,270,52);c.fillStyle='#fff0c4';c.font='bold 17px system-ui';c.fillText('KHU PHÍA NAM CỦA LÀNG',24,36);c.font='12px system-ui';c.fillText('Lối phải sang bến thuyền Mỏ Neo',24,53);}
+    if(scene==='out-harbor'){c.fillStyle='#142233dd';c.fillRect(14,14,284,52);c.fillStyle='#fff0c4';c.font='bold 17px system-ui';c.fillText('BẾN THUYỀN MỎ NEO',24,36);c.font='12px system-ui';c.fillText('Gặp người lái đò ⚓ để đi thành trì Pet Town',24,53);}
   }
   drawDuel(battle,id,players,localPlayer,localPet){
     const c=this.ctx,{width:w,height:h}=this.canvas;const i=battle.players.indexOf(id),foeId=battle.players[1-i];
@@ -216,7 +226,7 @@ export class Renderer {
     }
     return inside;
   }
-  drawForeground(layer) {
+  drawForeground(layer,scene='city') {
     const {ctx}=this;
     const points=layer.polygon;
     const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
@@ -225,7 +235,8 @@ export class Renderer {
     for(let i=1;i<points.length;i++)ctx.lineTo(...points[i]);
     ctx.closePath();ctx.clip();
     // Repaint EXACT pixels from the underlying flattened map within the object.
-    ctx.drawImage(this.images.map,left,top,right-left,bottom-top,left,top,right-left,bottom-top);
+    const image=scene==='city'?this.images.map:this.images[OUTSKIRTS[scene]?.image];
+    if(image)ctx.drawImage(image,left,top,right-left,bottom-top,left,top,right-left,bottom-top);
     ctx.restore();
   }
   drawActor(kind,actor) {

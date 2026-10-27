@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {WORLD, SPAWN} from '../src/config.js';
-import {CITY_EXITS,OUTSKIRTS,INTERIORS,PLAYER_RADIUS,isBlocked,getSceneDimensions,sceneTransferAt,moveWithCollisions,safeSceneSpawn} from '../src/world.js';
+import {CITY_EXITS,OUTSKIRTS,INTERIORS,PLAYER_RADIUS,isBlocked,getSceneDimensions,sceneTransferAt,moveWithCollisions,safeSceneSpawn,FERRY_ROUTES,nearestInteraction,getMapConfig} from '../src/world.js';
 
 const STEP=12;
 function nearbyStart(scene, pos){
@@ -74,3 +74,19 @@ for(const [source,cfg] of Object.entries(scenes))for(const exit of cfg.exits){
 const recovered=safeSceneSpawn('out-west',{x:1200,y:602});
 assert(!isBlocked(recovered.x,recovered.y,PLAYER_RADIUS,'out-west'));
 console.log('✅ PASS: All map arrivals, scene exits, return points, actual walkable routes, and mine round-trip.');
+assert.equal(sceneTransferAt('out-west-south',1512,618).to,'out-harbor');
+assert.equal(sceneTransferAt('out-harbor',40,548).to,'out-west-south');
+for(const [scene,routes] of Object.entries(FERRY_ROUTES)){
+ const npc=(scene==='city'?{x:1370,y:660}:OUTSKIRTS[scene].npc.find(n=>n.id==='ferryman'));
+ const approach={x:npc.x-18,y:npc.y+42,w:36,h:28};
+ assert(pathTo(scene,scenes[scene].spawn,approach).found,`${scene}: ferry NPC must be reachable from entrance`);
+ for(const route of routes){
+  assert(!isBlocked(route.spawn.x,route.spawn.y,PLAYER_RADIUS,route.to));
+  assert(!sceneTransferAt(route.to,route.spawn.x,route.spawn.y));
+  assert.equal(nearestInteraction(route.to,route.spawn.x,route.spawn.y)?.id,'ferryman','Arrival must allow return ferry');
+  assert(pathTo(route.to,route.spawn,scenes[route.to].exits[0]).found,'Ferry arrival must connect to walking exit');
+ }
+}
+for(const [x,y] of [[1300,300],[1300,700],[1140,100],[1190,600],[950,560]])assert(isBlocked(x,y,PLAYER_RADIUS,'out-harbor'),'Water and statue are solid');
+assert.equal(getMapConfig('out-harbor').image,'assets/out-harbor.png');
+console.log('✅ PASS: Harbor round-trip, ferry approaches, safe arrivals, return journeys, water/statue collision and minimap.');
