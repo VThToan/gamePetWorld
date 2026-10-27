@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09162b">
+  <title>Pet Town — Prototype tích hợp sprite & va chạm</title>
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div class="brand"><span class="logo" aria-hidden="true">✦</span><div>
+      <h1>Pet Town <span class="tag">MULTIPLAYER DEMO</span></h1>
+      <p>Khám phá thành trì · Người huấn luyện & Linh Thú Hỏa Vương</p>
+    </div></div>
+    <div class="top-actions">
+      <button id="battle-toggle" class="primary" type="button">⚔ Thử chiến đấu</button>
+      <button id="settings-toggle" type="button">⚙ Cài đặt</button>
+    </div>
+  </header>
+  <section class="viewport" id="stage" aria-label="Màn hình game">
+    <canvas id="game" width="960" height="640" aria-label="Bản đồ Pet Town"></canvas>
+    <div class="game-overlay top-left"><span class="green-dot"></span> <span id="game-status">Đang tải asset…</span></div>
+    <div class="game-overlay top-right" id="coordinates">X: -- · Y: --</div>
+    <div class="door-hint" id="door-hint" hidden>Nhấp trái / E · Tương tác</div>
+    <div class="net-status" id="net-status">🔴 Ngoại tuyến · chạy npm run dev để chơi 2 client</div>
+    <div class="peer-card" id="peer-card" hidden><strong id="peer-title">Người chơi</strong><p id="peer-subtitle">Thành trì</p><div><button id="peer-challenge" type="button">⚔ Thách đấu</button><button id="peer-profile" type="button">🐾 Xem pet</button><button id="peer-close" type="button">✕</button></div></div>
+    <button id="menu-trigger" type="button" class="menu-trigger" aria-label="Mở menu">🎒 <span>Menu</span></button>
+    <button id="rest-trigger" type="button" class="rest-trigger" title="H / Chế độ hồi phục: +10% HP/MP mỗi 2 giây">💚 Hồi phục</button>
+    <button id="interact-trigger" type="button" class="interact-trigger" hidden>💬 <span>Giao tiếp</span></button>
+    <div id="menu-shade" class="menu-shade" hidden></div>
+    <nav id="quick-menu" class="quick-menu" hidden aria-label="Menu game">
+      <div class="menu-head"><strong>🎒 Menu</strong><button id="menu-close" aria-label="Đóng menu">✕</button></div>
+      <button data-panel="quests">📜 <span>Nhiệm vụ</span></button>
+      <button data-panel="map">🗺️ <span>Bản đồ</span></button>
+      <button data-panel="settings">⚙️ <span>Tùy chọn</span></button>
+      <button data-panel="bag">🎒 <span>Ba lô</span></button>
+      <button data-panel="shop">🏪 <span>Thương điểm</span></button>
+      <button data-panel="storage">📚 <span>Lưu trữ</span></button>
+      <button data-panel="pets">🐾 <span>Đội hình Pet</span></button>
+      <button data-panel="pet-shop">🏷️ <span>Shop Pet</span></button>
+    </nav>
+    <section id="game-panel" class="game-panel" aria-label="Chức năng game" hidden>
+      <div id="game-panel-content"></div>
+    </section>
+    <div class="loading" id="loading"><div class="loader-icon">✦</div><strong>Đang chuẩn bị Pet Town</strong><p id="loading-progress">Đang nạp bản đồ và sprite…</p></div>
+    <div id="battle-actions" class="battle-actions" hidden aria-label="Kỹ năng chiến đấu">
+      <button data-skill="basic" type="button">👊 Đòn thường <small>0 MP</small></button>
+      <button data-skill="fire" type="button">⚔ Kiếm Hỏa <small>25 ST</small></button>
+      <button data-skill="moon" type="button">☾ Hắc Nguyệt <small>35 ST</small></button>
+      <button data-skill="spirit" type="button">✧ Triệu Hồi <small>18 ST · +12 HP</small></button>
+      <button id="element-skill" data-skill="elem-fire" type="button">🌿 Kỹ năng theo hệ <small>Lv.5</small></button>
+      <button data-skill="fury" type="button">🔥 Cường nộ <small>Gồng lượt này, tăng damage lượt sau</small></button>
+      <button data-skill="ultimate" type="button">💥 Tuyệt kỹ <small>Lv.40</small></button>
+      <button id="battle-heal" type="button">🧪 Hồi máu</button>
+      <button id="battle-catch" type="button">🟠 Bắt pet</button>
+      <button id="leave-battle" type="button" class="muted">Rời trận</button>
+    </div>
+  </section>
+  <div class="toolbar">
+    <div class="key-hints"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> Di chuyển · nhìn 4 hướng</span>
+      <span><kbd>Shift</kbd> Chạy</span><span><kbd>Chuột trái</kbd> Giữ kéo để di chuyển · nhấp để tương tác</span><span><kbd>R</kbd> Đặt lại</span><span><kbd>E</kbd> Tương tác nhanh</span><span><kbd>H</kbd> Hồi phục pet (+10% HP/MP mỗi 2 giây)</span><span><kbd>M</kbd> Menu</span><span><kbd>F3</kbd> Vùng va chạm</span></div>
+    <div class="quick-actions"><button id="pause" type="button">⏸ Tạm dừng</button><button id="reset" type="button">↺ Về điểm đầu</button></div>
+  </div>
+  <div class="mobile-pad" aria-label="Nút điều khiển cảm ứng">
+    <div class="pad-grid"><button data-control="arrowup" aria-label="Lên">▲</button><button data-control="arrowleft" aria-label="Trái">◀</button><button data-control="arrowdown" aria-label="Xuống">▼</button><button data-control="arrowright" aria-label="Phải">▶</button></div>
+    <button id="touch-interact" type="button">GIAO TIẾP / TƯƠNG TÁC</button><button id="touch-run" type="button">CHẠY</button>
+  </div>
+  <div class="footerline"><span id="details">Đang khởi tạo…</span><span>Map 1536×1024 · Sprite theo hướng · Camera bám · Va chạm</span></div>
+  <p class="notice">Đây là <strong>bản thử nghiệm gameplay, hai client và tích hợp asset</strong>, đã có thêm pet hoang dã, bắt pet, chiến đấu tự động theo lượt và vật phẩm trong trận. Một số sprite vẫn là bản thử nghiệm và có thể tiếp tục tinh chỉnh.</p>
+</main>
+<dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+  <form method="dialog" class="settings-card">
+    <div class="dialog-heading"><div><h2 id="settings-title">Cài đặt hiển thị</h2><p>Điều chỉnh cho vừa màn hình, thay đổi kích thước nhân vật.</p></div><button type="submit" aria-label="Đóng">✕</button></div>
+    <label>Độ phân giải khung hình
+      <select id="resolution"><option value="960x640">960 × 640 · 3:2 (mặc định)</option><option value="1280x720">1280 × 720 · 16:9</option><option value="800x600">800 × 600 · 4:3</option><option value="1024x768">1024 × 768 · 4:3</option><option value="1280x800">1280 × 800 · 16:10</option></select>
+    </label>
+    <label class="range-label">Camera / độ phóng đại <output id="zoom-output">1.12×</output>
+      <input id="zoom" type="range" min="0.8" max="1.75" step="0.05" value="1.12">
+    </label>
+    <label class="range-label">Kích thước nhân vật <output id="player-output">1.15×</output>
+      <input id="player-scale" type="range" min="0.7" max="1.8" step="0.05" value="1.15">
+    </label>
+    <label class="range-label">Kích thước pet <output id="pet-output">1.07×</output>
+      <input id="pet-scale" type="range" min="0.6" max="1.6" step="0.05" value="1.07">
+    </label>
+    <label class="checkbox-row"><input id="pixelated" type="checkbox" checked> Hiển thị pixel sắc nét (không làm mờ)</label>
+    <label class="checkbox-row"><input id="debug-collisions" type="checkbox"> Hiện vùng vật cản (debug)</label>
+    <div class="dialog-footer"><button id="fullscreen" type="button">⛶ Toàn màn hình</button><button id="defaults" type="button">Về mặc định</button><button class="primary" type="submit">Xong</button></div>
+  </form>
+</dialog>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
