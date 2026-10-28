@@ -41,7 +41,7 @@ export class SharedWildWorld{
   const group=this.getMonsters(scene);if(group.length>=WILD_MAX_PER_MAP)return null;
   const pos=this.candidate(scene,cellIndex,group);if(!pos)return null;
   const type=pick(config.species,this.random),level=config.level[0]+Math.floor(this.random()*(config.level[1]-config.level[0]+1));
-  const monster={id:`wild-${++this.serial}`,scene,species:type,name:speciesById(type).name,level,cell:cellIndex,...pos,hp:100,mp:100,speed:statsFor(type,level).speed,status:'idle',engagedBy:null,anim:this.random()*10,facing:this.random()>.5?'east':'west'};
+  const monster={id:`wild-${++this.serial}`,scene,species:type,name:speciesById(type).name,level,cell:cellIndex,...pos,hp:100,mp:100,speed:statsFor(type,level).speed,status:'idle',engagedBy:null,anim:this.random()*10,facing:this.random()>.5?'east':'west',nextTurnAt:this.now()+2200+this.random()*2400};
   group.push(monster);return monster;
  }
  seedScene(scene){this.monsters.set(scene,[]);for(let i=0;i<WILD_MAX_PER_MAP;i++)this.spawn(scene,i);}
@@ -63,7 +63,7 @@ export class SharedWildWorld{
     turn:playerFirst?'player':'enemy',turnEndsAt:now+(playerFirst?AUTO_ATTACK_MS:700),phase:'fighting',effect:null,log:`${speciesById(species).name} ${playerFirst?'ra đòn trước':'chậm hơn đối thủ'} (tốc độ ${speed}/${monster.speed}).`,
     furyMultiplier:1,petSkills:client.skills||['basic'],initialItems:{potion:client.potionCount||0,ball:client.ballCount||0},appliedItem:null,
     startedAt:now,endsAt:null,round:1};
-  monster.status='battle';monster.engagedBy=id;this.fights.set(id,f);
+  monster.status='battle';monster.engagedBy=id;monster.facing=client.player.x<monster.x?'west':'east';this.fights.set(id,f);
   this.onEvent(id,{type:'wildBattleStart',fight:this.publicFight(f)});
   return {ok:true,fight:f};
  }
@@ -133,6 +133,13 @@ export class SharedWildWorld{
  }
  disconnect(id){const f=this.fights.get(id);if(f){const monster=this.find(f.monsterId);if(monster){monster.status='idle';monster.engagedBy=null;}this.fights.delete(id);}}
  tick(now=this.now()){
+  // Idle turns are server-owned, so every client sees the same facing. Never
+  // move spawn positions or turn a locked monster away from its opponent.
+  for(const group of this.monsters.values())for(const monster of group){
+   if(monster.status!=='idle'||now<monster.nextTurnAt)continue;
+   monster.facing=monster.facing==='east'?'west':'east';
+   monster.nextTurnAt=now+2200+(monster.anim%1)*2400;
+  }
   for(const f of [...this.fights.values()]){
    if(f.phase==='ended'){
     if(now>=f.endsAt)this.fights.delete(f.playerId);continue;

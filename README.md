@@ -25,7 +25,7 @@ Muốn chơi qua Internet, chạy cùng máy chủ trên host mà các thiết b
 ## Bến thuyền và người lái đò
 
 - Từ **làng phía Tây**, đi xuống **khu phía Nam của làng**, rồi theo đường sang phải để đến **Bến thuyền Mỏ Neo** (`out-harbor`). Lối bên trái bến đưa bạn về khu nam làng.
-- Asset `assets/out-harbor.png` là bản đồ 1536×1024 vẽ lại từ ảnh tham chiếu: đồng bộ phong cách rừng/cỏ/đường đất với hai map làng, bỏ khung điện thoại, giao diện và các nhân vật khác; giữ duy nhất người lái đò đội mũ xanh có biểu tượng mỏ neo.
+- Asset `assets/out-harbor.png` là nền bản đồ 1536×1024 vẽ lại từ ảnh tham chiếu: đồng bộ phong cách rừng/cỏ/đường đất với hai map làng, bỏ khung điện thoại, giao diện và các nhân vật khác. Người lái đò đội mũ xanh có biểu tượng mỏ neo được vẽ riêng để có thể chuyển động.
 - Đến gần người lái đò ở cầu tàu, nhấn **E**, nút **Giao tiếp**, hoặc nhấp để mở bảng chọn chuyến đi. Chọn **Thành trì Pet Town** để đi nhanh miễn phí. Người lái đò ở phía đông nam thành trì có tuyến quay lại bến.
 - Máy chủ kiểm tra điểm đến, khoảng cách tới NPC và trạng thái chiến đấu trước khi chuyển map; các client khác nhận vị trí mới qua snapshot chung.
 - Nước, bệ tượng, bồn hoa và chân cây có va chạm; mái nhà và tán cây che nhân vật theo độ sâu. Menu bản đồ hiển thị asset bến cùng vị trí người lái đò.
@@ -42,6 +42,11 @@ Muốn chơi qua Internet, chạy cùng máy chủ trên host mà các thiết b
 - Khi thắng, client nhận EXP và quái biến mất trên mọi client. Bắt pet hoang dã có tỉ lệ cao hơn khi HP thấp/bị hiệu ứng bất lợi.
 
 ## Kỹ năng / VFX
+
+- Lớp che nhà/cây được cắt theo đường viền vật thể. Các lớp cây bỏ pixel nền đường đất/gạch; vùng đầu hoặc thân bị che có bóng mờ để người chơi vẫn theo dõi được vị trí. Các map làng, bến và nội thất dùng cùng cách sắp lớp theo chân nhân vật.
+- `assets/player/walk-vertical.png` chứa 4 bước đi xuống và 4 bước đi lên với chân/tay luân phiên. Các frame được tách và chuẩn hóa điểm đặt chân khi nạp; không cần chạy công cụ tạo sprite để chơi.
+- Nhân vật, pet, quái và NPC có bóng chân và chuyển động đứng yên nhẹ; hiệu ứng hình ảnh không thay đổi tọa độ va chạm. Hướng quay của quái ngoài map do server cập nhật và khóa về phía đối thủ khi vào trận.
+- Nền cửa hàng mái cam và nhà phía Tây đã được vẽ lại; NPC dùng atlas riêng `assets/npc/townsfolk.png`. Va chạm và lớp quầy/bàn/nồi gốm được căn theo nội thất mới; thảm trải sàn không còn bị coi là cả một vật cản.
 
 - `assets/effects/`: 7 frame nền trong suốt cho mỗi hệ **Cỏ, Lửa, Nước, Đất, Điện, Băng, Gió, Bóng tối, Ánh sáng**, cùng **Cường nộ**, **Hồi phục**, **Hồi sinh** và **Đòn thường**.
 - `src/wild-data.js`: chỉnh hệ pet, map spawn, số quái, thời gian respawn, hệ số cường nộ.
@@ -63,9 +68,11 @@ Muốn chơi qua Internet, chạy cùng máy chủ trên host mà các thiết b
 npm test
 ```
 
-Chạy đủ 9 tệp kiểm thử: progression, smoke, scenes, navigation, features, shared-world, shared-sockets, effects, multiplayer. Các test khởi động/dừng máy chủ riêng trên cổng 58213, 58227 và 58241; cần để trống các cổng này.
+Chạy đủ 10 tệp kiểm thử: progression, smoke, scenes, navigation, features, shared-world, shared-sockets, effects, multiplayer, animation. Các test khởi động/dừng máy chủ riêng trên cổng 58213, 58227 và 58241; cần để trống các cổng này.
 
 `tests/multiplayer.mjs` kiểm tra 8 kết nối đồng thời (có kết nối qua IP mạng nếu có), hai trận PvP và hai trận PvE cùng lúc, khóa quái, giới hạn kết nối, giải phóng slot/quái khi rời mạng, tuyến đò hai chiều và đồng bộ tới người quan sát. `tests/navigation.mjs` kiểm tra đường đi tới NPC, lối sang/về bến, điểm đặt an toàn và va chạm nước/tượng. Tám kết nối là mức đã kiểm thử chức năng, chưa phải benchmark tải 64 người.
+
+Kiểm thử đồ họa tùy chọn: sau khi chạy máy chủ, dùng `python3 tests/graphics-browser.py` nếu đã có Python Playwright và Chromium. Biến `PETTOWN_URL` chọn địa chỉ server (mặc định `http://127.0.0.1:5500`), `CHROMIUM_PATH` chọn trình duyệt nếu không có lệnh `chromium`. Test kiểm tra pixel của lớp che trên canvas thật, sự khác nhau ở chân giữa các frame lên/xuống, 6 sprite NPC, trường hợp chỉ đầu bị che và tải/hiển thị đủ 10 scene. Đây là công cụ kiểm tra tùy chọn; người chơi không cần cài Python hoặc Playwright.
 
 ## Giới hạn prototype
 

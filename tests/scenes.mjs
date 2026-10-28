@@ -51,5 +51,5 @@ assert(storePet(p,p.pets[1].id).ok);assert.equal(p.pets.length,2);
 assert(withdrawPet(p,p.storage[0].id).ok);assert.equal(p.pets.length,3);
 assert(acceptQuest(p).ok);assert(!acceptQuest(p).ok);assert(p.quest.accepted);
 // Collision stairs/threshold and corner sliding still obey feet-only geometry.
-const actor={x:421,y:763};moveWithCollisions(actor,0,-80,10,'orange-shop');assert(actor.y>=748);
+const actor={x:421,y:763};moveWithCollisions(actor,0,-100,10,'orange-shop');assert(actor.y>=701&&actor.y<=705,'Player stops at the visible new counter foundation');
 console.log('✅ PASS: 2 nội thất, NPC, ngưỡng thoát, MAGIC đi tới được, bảng nhiệm vụ, mua đồ, lưu trữ/hồi pet.');

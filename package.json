@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node dev-server.mjs",
     "dev": "node dev-server.mjs",
-    "test": "node tests/progression.mjs && node tests/smoke.mjs && node tests/scenes.mjs && node tests/navigation.mjs && node tests/features.mjs && node tests/shared-world.mjs && node tests/shared-sockets.mjs && node tests/effects.mjs && node tests/multiplayer.mjs"
+    "test": "node tests/progression.mjs && node tests/smoke.mjs && node tests/scenes.mjs && node tests/navigation.mjs && node tests/features.mjs && node tests/shared-world.mjs && node tests/shared-sockets.mjs && node tests/effects.mjs && node tests/multiplayer.mjs && node tests/animation.mjs"
   },
   "dependencies": {
     "ws": "^8.22.0"

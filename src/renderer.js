@@ -2,6 +2,8 @@ import { WORLD } from './config.js';
 import { INTERIORS, OUTSKIRTS, CITY_EXITS, isOutdoorScene, getSceneDimensions } from './world.js';
 import {SKILL_LEVELS,speciesById} from './pet-data.js';
 import { SOLIDS, FOREGROUND, PORTALS, PLAYER_RADIUS, PET_RADIUS } from './world.js';
+import {actorMotion} from './animation.js';
+import {isFoliagePixel,polygonBounds,overlaps} from './occlusion.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const round=n=>Math.round(n);
 export class Renderer {
@@ -9,6 +11,8 @@ export class Renderer {
     this.canvas=canvas;this.ctx=canvas.getContext('2d',{alpha:false});
     this.images=assets;this.settings=settings;
     this.camera={x:0,y:0};this.time=0;
+    this.foregroundCache=new WeakMap();
+    this.hintCanvas=document.createElement('canvas');this.hintMask=document.createElement('canvas');
     this.setResolution(settings.resolution);
   }
   setResolution(value) {
@@ -44,21 +48,26 @@ export class Renderer {
       if(img) ctx.drawImage(img,0,0,dim.width,dim.height);
       else {ctx.fillStyle=scene==='city'?'#253b4f':'#30241c';ctx.fillRect(0,0,dim.width,dim.height);}
     }
-    if(scene==='city'){this.drawCityMarkers();this.drawPetVendor();this.drawCityFerryman();}
-    else if(!isOutdoorScene(scene))this.drawIndoorHighlights(scene);
+    if(scene==='city')this.drawCityMarkers();
     // Painter algorithm: roofs, trees and signs cover actors BEHIND them.
     // They never block movement merely because they are tall in the image.
     const sceneNpcLayers=(OUTSKIRTS[scene]?.rookieTrainer?[      {kind:'npc-player',y:OUTSKIRTS[scene].rookieTrainer.y,data:{x:OUTSKIRTS[scene].rookieTrainer.x,y:OUTSKIRTS[scene].rookieTrainer.y,facing:'west',moving:false,anim:0,displayName:OUTSKIRTS[scene].rookieTrainer.name}},      {kind:'npc-pet',y:OUTSKIRTS[scene].rookieTrainer.petY,data:{x:OUTSKIRTS[scene].rookieTrainer.petX,y:OUTSKIRTS[scene].rookieTrainer.petY,facing:'east',moving:false,anim:0,species:OUTSKIRTS[scene].rookieTrainer.species,displayName:OUTSKIRTS[scene].rookieTrainer.petName}}    ]:[]);
-    const foreground=scene==='city'?FOREGROUND:(OUTSKIRTS[scene]?.foreground||[]);
+    const foreground=scene==='city'?FOREGROUND:((OUTSKIRTS[scene]||INTERIORS[scene])?.foreground||[]);
+    const people=scene==='city'?[
+      {id:'pet-shop',sprite:'pet-shop',label:'SHOP PET · E',x:1033,y:319},
+      {id:'ferryman',sprite:'ferryman',label:'LÁI ĐÒ · E',x:1370,y:660,anchor:true},
+    ]:(INTERIORS[scene]?.npc||OUTSKIRTS[scene]?.npc||[]);
+    const npcLayers=people.filter(n=>n.sprite).map(n=>({kind:'npc',y:n.spriteY??n.y,data:{...n,npcId:n.sprite,id:'npc-'+n.id,x:n.spriteX??n.x,y:n.spriteY??n.y,moving:false,anim:0}}));
     const layers=[
       ...foreground.map(item=>({kind:'foreground',y:item.contactY,data:item})),
       ...sceneNpcLayers,
+      ...npcLayers,
       {kind:'player',y:game.player.y,data:game.player},
       {kind:'pet',y:game.pet.y,data:game.pet},
       ...((game.net?.wilds||[]).filter(w=>w.scene===scene).map(w=>({kind:'wild-pet',y:w.y,data:w}))),
       ...((game.net?.players||[]).filter(p=>p.scene===scene).flatMap(p=>[
-        {kind:'remote-player',y:p.player.y,data:{...p.player,displayName:p.name}},
-        {kind:'remote-pet',y:p.pet.y,data:{...p.pet,species:p.species,displayName:speciesById(p.species).name}}
+        {kind:'remote-player',y:p.player.y,data:{...p.player,id:p.id,displayName:p.name}},
+        {kind:'remote-pet',y:p.pet.y,data:{...p.pet,id:p.id+'-pet',species:p.species,displayName:speciesById(p.species).name}}
       ])),
     ].sort((a,b)=>a.y-b.y);
     for(const layer of layers) {
@@ -69,13 +78,10 @@ export class Renderer {
       if(layer.kind==='npc-player')this.drawRemoteName(layer.data);
       if(layer.kind==='npc-pet'||layer.kind==='wild-pet')this.drawScenePetName(layer.data,layer.kind==='wild-pet');
     }
-    // A faint ghost prevents the avatar disappearing completely behind a roof.
-    // Building art remains visually in front; gameplay movement is not restricted.
-    for(const actor of [{kind:'player',data:game.player},{kind:'pet',data:game.pet}]) {
-      if(foreground.some(layer=>actor.data.y<layer.contactY && this.isInsidePolygon(actor.data.x,actor.data.y,layer.polygon))) {
-        ctx.save();ctx.globalAlpha=.30;this.drawActor(actor.kind,actor.data);ctx.restore();
-      }
-    }
+    // Reveal only sprite pixels actually covered by a foreground silhouette,
+    // including head-only overlap. Empty background pixels never erase actors.
+    for(const actor of layers.filter(layer=>layer.kind!=='foreground'&&layer.kind!=='npc'))this.drawOccludedHint(actor,foreground,scene);
+    for(const layer of npcLayers)this.drawNPCLabel(layer.data);
     if(isOutdoorScene(scene))this.drawSceneExitArrows(scene);
     this.drawOverworldFights(game,scene);
     if(game.recoveryVfx?.at&&Date.now()-game.recoveryVfx.at<1200)this.drawElementEffect(game.recoveryVfx.element,game.pet.x,game.pet.y-48,(Date.now()-game.recoveryVfx.at)/1200,65);
@@ -105,24 +111,16 @@ export class Renderer {
     if(axis==='h'){c.moveTo(x-13,y);c.lineTo(x+13,y);}else{c.moveTo(x,y-13);c.lineTo(x,y+13);}c.stroke();
     c.lineWidth=3;c.strokeStyle=color;c.stroke();c.restore();
   }
-  drawPetVendor(){
-    const c=this.ctx,x=1032,y=319;
-    const img=this.images.player_south_0;
-    c.save();c.fillStyle='#1d2c36a9';c.beginPath();c.ellipse(x,y-1,22,6,0,0,7);c.fill();
-    if(img){c.filter='sepia(.18) saturate(1.3)';c.drawImage(img,x-30,y-82,60,81);c.filter='none';}
-    c.font='bold 12px system-ui';c.textAlign='center';c.lineWidth=3;c.strokeStyle='#163041';c.strokeText('SHOP PET · E',x,y-92);c.fillStyle='#ffed9c';c.fillText('SHOP PET · E',x,y-92);
-    c.textAlign='left';c.restore();
-  }
   drawCityMarkers(){
     for(const g of CITY_EXITS)this.drawGateArrow(g.markerX,g.markerY,g.facing);
   }
-  drawCityFerryman(){
-    const c=this.ctx,x=1370,y=660,img=this.images.player_south_0;
-    c.save();
-    if(img){c.filter='hue-rotate(180deg)';c.drawImage(img,x-25,y-72,50,72);c.filter='none';}
-    c.textAlign='center';c.font='bold 23px system-ui';c.strokeStyle='#143849';c.lineWidth=4;
-    c.strokeText('⚓',x,y-83);c.fillStyle='#9af0ff';c.fillText('⚓',x,y-83);
-    c.font='bold 12px system-ui';c.strokeText('LÁI ĐÒ · E',x,y+20);c.fillStyle='#fff0c4';c.fillText('LÁI ĐÒ · E',x,y+20);c.restore();
+  drawNPCLabel(npc){
+    const c=this.ctx,tags={elder:'BÀ CHỦ NHÀ',evolution:'NGUYÊN LIỆU',items:'VẬT PHẨM',storage:'LƯU TRỮ',ferryman:'LÁI ĐÒ · E','pet-shop':'SHOP PET · E'};
+    const x=npc.x,y=npc.y-94;
+    c.save();c.textAlign='center';c.font='bold 11px system-ui';c.strokeStyle='#112b37';c.lineWidth=3;
+    c.strokeText(tags[npc.npcId]||npc.label,x,y);c.fillStyle='#fff2c8';c.fillText(tags[npc.npcId]||npc.label,x,y);
+    if(npc.anchor){c.font='bold 25px system-ui';const ay=y-23+Math.sin(this.time*2)*2;c.strokeText('⚓',x,ay);c.fillStyle='#9af2ff';c.fillText('⚓',x,ay);}
+    c.restore();
   }
   drawGateArrow(x,y,dir){
     const c=this.ctx,angle={north:-Math.PI/2,south:Math.PI/2,west:Math.PI,east:0}[dir];
@@ -135,44 +133,6 @@ export class Renderer {
       if(exit.showArrow===false)continue;
       const x=exit.x+exit.w/2,y=exit.y+exit.h/2;
       this.drawGateArrow(x,y,exit.arrow||'north');
-    }
-  }
-  drawIndoorHighlights(scene){
-    const c=this.ctx,people=INTERIORS[scene]?.npc||[];
-    // Lightweight pixel-furniture details contextualize previously empty wall space.
-    if(scene==='orange-shop'){
-      c.save();c.imageSmoothingEnabled=false;
-      for(const y of [124,160]){
-        c.fillStyle='#87502c';c.fillRect(218,y,270,8);c.fillStyle='#d09b4c';c.fillRect(221,y,264,3);
-      }
-      for(const [x,y,color,kind] of [
-       [238,100,'#f35461','ball'],[291,101,'#7edcfa','potion'],[348,100,'#f6bb63','ball'],[426,102,'#98f1a4','potion'],
-       [256,136,'#da70f2','potion'],[322,135,'#f5b54a','ball'],[391,135,'#61e7e2','potion'],[455,135,'#f1dd7a','ball']]){
-        c.fillStyle='#252334';c.fillRect(x-11,y-13,24,24);c.fillStyle='#f3e3c0';c.fillRect(x-8,y-10,18,18);
-        if(kind==='ball'){
-          c.fillStyle=color;c.beginPath();c.arc(x+1,y,8,Math.PI,2*Math.PI);c.fill();c.fillStyle='#fff';c.fillRect(x-7,y,16,7);
-          c.fillStyle='#273247';c.fillRect(x-8,y-1,18,3);c.fillStyle='#fff';c.fillRect(x-2,y-3,5,5);
-        }else{
-          c.fillStyle=color;c.fillRect(x-5,y-4,12,12);c.fillStyle='#7d444b';c.fillRect(x-2,y-8,6,5);
-          c.fillStyle='#fff9ec';c.fillRect(x-3,y,4,2);
-        }
-      }
-      c.fillStyle='#633c20';c.fillRect(229,192,249,24);c.fillStyle='#f6d684';c.font='bold 16px system-ui';c.textAlign='center';c.fillText('PET TOWN · VẬT PHẨM',354,209);c.textAlign='left';c.restore();
-    }
-    if(scene==='west-cottage'){
-      c.save();c.fillStyle='#84623f';c.fillRect(91,466,188,12);
-      c.fillStyle='#b6d872';for(let i=0;i<6;i++){const x=107+i*28;c.beginPath();c.arc(x,449-(i%2)*5,12,0,7);c.fill();}
-      c.font='bold 15px system-ui';c.fillStyle='#8b5c3c';c.fillText('NHÀ ẤM ÁP',375,287);c.restore();
-    }
-    // The screenshot NPC artwork remains intact; high-contrast labels make it legible.
-    for(const person of people){
-      const tags={elder:'Bà chủ nhà',evolution:'NGUYÊN LIỆU',items:'HỒI PHỤC',storage:'LƯU TRỮ'};
-      const label=tags[person.id]||person.label;
-      const x=person.x,y=person.id==='items'||person.id==='storage'?person.y-180:person.y-118;
-      c.save();c.font='bold 13px system-ui';const w=Math.max(65,c.measureText(label).width+16);
-      c.fillStyle='#162236ec';c.strokeStyle='#ffe0a4';c.lineWidth=1.5;
-      c.beginPath();c.roundRect(x-w/2,y-19,w,25,7);c.fill();c.stroke();
-      c.textAlign='center';c.fillStyle='#fff1cd';c.fillText(label,x,y-2);c.restore();
     }
   }
   drawOutdoors(scene){
@@ -218,54 +178,57 @@ export class Renderer {
     c.font='15px system-ui';c.fillStyle='#d8ebff';c.fillText(battle.log,w/2,h*.76);
     c.fillStyle=battle.turn===id?'#6effc0':'#ffd491';c.fillText(battle.turn===id?'ĐẾN LƯỢT BẠN':'ĐANG CHỜ ĐỐI THỦ',w/2,h*.18);c.restore();
   }
-  isInsidePolygon(x,y,polygon) {
-    let inside=false;
-    for(let i=0,j=polygon.length-1;i<polygon.length;j=i++) {
-      const a=polygon[i],b=polygon[j];
-      if((a[1]>y)!==(b[1]>y) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])inside=!inside;
+  foregroundImage(layer,scene){
+    if(this.foregroundCache.has(layer))return this.foregroundCache.get(layer);
+    const bounds=polygonBounds(layer.polygon),{x,y,width,height}=bounds;
+    const image=scene==='city'?this.images.map:this.images[(OUTSKIRTS[scene]||INTERIORS[scene])?.image];
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const c=canvas.getContext('2d',{willReadFrequently:true});
+    c.save();c.beginPath();layer.polygon.forEach(([px,py],i)=>i?c.lineTo(px-x,py-y):c.moveTo(px-x,py-y));c.closePath();c.clip();
+    if(image){const dim=getSceneDimensions(scene);c.drawImage(image,-x,-y,dim.width,dim.height);}c.restore();
+    if(layer.foliage){
+      const pixels=c.getImageData(0,0,width,height);
+      for(let i=0;i<pixels.data.length;i+=4)if(!isFoliagePixel(pixels.data[i],pixels.data[i+1],pixels.data[i+2]))pixels.data[i+3]=0;
+      c.putImageData(pixels,0,0);
     }
-    return inside;
+    const result={...bounds,canvas};this.foregroundCache.set(layer,result);return result;
   }
-  drawForeground(layer,scene='city') {
-    const {ctx}=this;
-    const points=layer.polygon;
-    const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
-    const left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
-    ctx.save();ctx.beginPath();ctx.moveTo(...points[0]);
-    for(let i=1;i<points.length;i++)ctx.lineTo(...points[i]);
-    ctx.closePath();ctx.clip();
-    // Repaint EXACT pixels from the underlying flattened map within the object.
-    const image=scene==='city'?this.images.map:this.images[OUTSKIRTS[scene]?.image];
-    if(image)ctx.drawImage(image,left,top,right-left,bottom-top,left,top,right-left,bottom-top);
+  drawForeground(layer,scene='city'){
+    const mask=this.foregroundImage(layer,scene);this.ctx.drawImage(mask.canvas,mask.x,mask.y);
+  }
+  actorVisual(kind,actor){
+    const player=kind.includes('player'),npc=kind==='npc',humanoid=player||npc;
+    const scale=npc?1:(player?this.settings.playerScale:this.settings.petScale);
+    const frames=player?(this.images.frames?.[actor.facing]||2):npc?1:2;
+    const motion=actorMotion(actor,this.time,{player:humanoid,frames});
+    const key=npc?'npc_'+actor.npcId:player?'player_'+actor.facing+'_'+motion.frame:'pet_'+(actor.species||'flame')+'_'+motion.frame;
+    const image=this.images[key]||(player?this.images.player_south_0:this.images.pet_east);
+    const nativeW=image?.naturalWidth||image?.width||57,nativeH=image?.naturalHeight||image?.height||77;
+    const anchor=this.images.bounds?.[key]||{centerX:nativeW/2,bottom:nativeH};
+    return {image,key,anchor,motion,scale,flip:!humanoid&&actor.facing==='west',w:nativeW*scale,h:nativeH*scale*motion.stretch};
+  }
+  drawActor(kind,actor,{ctx=this.ctx,shadow=true}={}){
+    const {image,anchor,motion,scale,flip,w,h}=this.actorVisual(kind,actor);
+    if(shadow){
+      ctx.save();ctx.fillStyle='rgba(10,24,31,.27)';ctx.beginPath();
+      ctx.ellipse(round(actor.x),round(actor.y-1),Math.min(24,w*.3)*(1-motion.lift*.035),4.5,0,0,Math.PI*2);ctx.fill();ctx.restore();
+    }
+    ctx.save();ctx.translate(round(actor.x),round(actor.y));ctx.rotate(motion.tilt);if(flip)ctx.scale(-1,1);
+    if(image)ctx.drawImage(image,round(-anchor.centerX*scale),round(-anchor.bottom*scale*motion.stretch-motion.lift),round(w),round(h));
     ctx.restore();
   }
-  drawActor(kind,actor) {
-    const ctx=this.ctx;
-    const isPlayer=kind.includes('player');
-    const scale=isPlayer?this.settings.playerScale:this.settings.petScale;
-    const frame=actor.moving?(Math.floor(actor.anim*7)%2):0;
-    // Pet has ONLY one side view, mirrored horizontally for the other direction.
-    // Keeping the entire original bitmap fixes amputated tail / legs.
-    const key=isPlayer?`player_${actor.facing}_${frame}`:`pet_${actor.species||'flame'}_${frame}`;
-    const chosen=this.images[key]||this.images.pet_east;
-    const image=chosen;
-    const nativeW=image?.naturalWidth||57,nativeH=image?.naturalHeight||77;
-    const bounds=this.images.bounds?.[key]||{centerX:nativeW/2,bottom:nativeH};
-    const w=nativeW*scale,h=nativeH*scale;
-    const bob=actor.moving?Math.abs(Math.sin(actor.anim*11))*.65:0;
-    // The feet anchor (actor.x, actor.y) coincides with the visible lowest
-    // alpha pixel, not the bottom of the PNG or top of the collider circle.
-    const x=round(actor.x-bounds.centerX*scale),y=round(actor.y-bounds.bottom*scale-bob);
-    ctx.fillStyle='rgba(7,23,25,.22)';ctx.beginPath();
-    ctx.ellipse(round(actor.x),round(actor.y-1),Math.min(15,w*.25),3.5,0,0,Math.PI*2);ctx.fill();
-    if(image) {
-      if(!isPlayer&&actor.facing==='west') {
-        ctx.save();ctx.translate(round(actor.x*2),0);ctx.scale(-1,1);
-        ctx.drawImage(image,x,y,round(w),round(h));ctx.restore();
-      }else ctx.drawImage(image,x,y,round(w),round(h));
-    }else {
-      ctx.fillStyle=isPlayer?'#56b9ff':'#cc89ff';ctx.fillRect(x,y,w,h);
-    }
+  drawOccludedHint(layer,foreground,scene){
+    const actor=layer.data,v=this.actorVisual(layer.kind,actor);
+    const bounds={x:Math.floor(actor.x-v.w/2-8),y:Math.floor(actor.y-v.h-8),width:Math.ceil(v.w+16),height:Math.ceil(v.h+16)};
+    const masks=foreground.filter(f=>actor.y<f.contactY).map(f=>this.foregroundImage(f,scene)).filter(f=>overlaps(bounds,f));
+    if(!masks.length)return;
+    const body=this.hintCanvas,mask=this.hintMask;
+    body.width=mask.width=bounds.width;body.height=mask.height=bounds.height;
+    const c=body.getContext('2d'),m=mask.getContext('2d');c.imageSmoothingEnabled=m.imageSmoothingEnabled=false;
+    c.translate(-bounds.x,-bounds.y);this.drawActor(layer.kind,actor,{ctx:c,shadow:false});c.setTransform(1,0,0,1,0,0);
+    for(const f of masks)m.drawImage(f.canvas,f.x-bounds.x,f.y-bounds.y);
+    c.globalCompositeOperation='destination-in';c.drawImage(mask,0,0);
+    this.ctx.save();this.ctx.globalAlpha=.38;this.ctx.drawImage(body,bounds.x,bounds.y);this.ctx.restore();
   }
   drawContactPoint(actor,color,radius) {
     const ctx=this.ctx;
@@ -292,7 +255,7 @@ export class Renderer {
     ctx.fillStyle='rgba(47,235,160,.24)';ctx.strokeStyle='#42eeba';
     for(const door of (scene==='city'?PORTALS:[])){ctx.fillRect(door.x,door.y,door.w,door.h);ctx.strokeRect(door.x,door.y,door.w,door.h);}
     ctx.strokeStyle='rgba(61,169,250,.68)';ctx.lineWidth=1;
-    for(const o of (scene==='city'?FOREGROUND:[])) {
+    for(const o of (scene==='city'?FOREGROUND:(INTERIORS[scene]||OUTSKIRTS[scene])?.foreground||[])) {
       ctx.beginPath();ctx.moveTo(...o.polygon[0]);
       for(let i=1;i<o.polygon.length;i++)ctx.lineTo(...o.polygon[i]);
       ctx.closePath();ctx.stroke();
